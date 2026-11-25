@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Calendar</title>
+<style>
+  .light { --bg:#fff; --fg:#000; --sub:#8e8e93; --line:#e5e5ea; --we:#f9f9fb; --red:#ff3b30; }
+  .dark  { --bg:#000; --fg:#fff; --sub:#8e8e93; --line:#2c2c2e; --we:#0b0b0c; --red:#ff453a; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+  body { font-family:-apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+         -webkit-font-smoothing:antialiased; -webkit-user-select:none; }
+  #app { display:flex; flex-direction:column; background:var(--bg); color:var(--fg); height:100vh; }
+  header { display:flex; align-items:flex-end; justify-content:space-between; padding:14px 18px 8px 18px; }
+  .title { font-size:30px; font-weight:700; letter-spacing:-0.5px; }
+  .title .yr { font-weight:400; color:var(--red); }
+  .nav button { font:inherit; font-size:17px; color:var(--red); background:none; border:0; padding:4px 10px; }
+  .nav .pill { border:1px solid var(--line); border-radius:16px; padding:4px 14px; margin:0 4px; }
+  .row { display:flex; }
+  .gut { width:56px; flex:none; }
+  #dayhead { border-bottom:1px solid var(--line); }
+  .dh { flex:1; text-align:center; padding:6px 0 8px 0; font-size:15px; color:var(--sub); }
+  .dh .dn { display:inline-block; min-width:28px; height:28px; line-height:28px; border-radius:14px;
+            color:var(--fg); font-weight:500; margin-left:2px; }
+  .dh.today .wd { color:var(--red); }
+  .dh.today .dn { background:var(--red); color:#fff; font-weight:700; }
+  #allday { border-bottom:1px solid var(--line); }
+  .lbl { font-size:11px; color:var(--sub); text-align:right; padding:6px 6px 0 0; box-sizing:border-box; }
+  .adcols { flex:1; position:relative; }
+  .cell { position:absolute; top:0; bottom:0; border-left:1px solid var(--line); }
+  .cell.we { background:var(--we); }
+  .ad { position:absolute; height:19px; line-height:19px; font-size:12px; font-weight:600;
+        border-radius:4px; padding:0 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        box-sizing:border-box; }
+  #grid { flex:1; position:relative; min-height:0; }
+  #inner { position:absolute; top:10px; bottom:12px; left:0; right:0; }
+  .hl { position:absolute; left:56px; right:0; border-top:1px solid var(--line); }
+  .hlab { position:absolute; left:0; width:50px; text-align:right; font-size:11px; color:var(--sub);
+          margin-top:-7px; }
+  .cols { position:absolute; left:56px; right:0; top:0; bottom:0; }
+  .col { position:absolute; top:-10px; bottom:-12px; border-left:1px solid var(--line); }
+  .col.we { background:var(--we); }
+  .evs { position:absolute; top:10px; bottom:12px; left:0; right:0; }
+  .ev { position:absolute; box-sizing:border-box; border-left:3px solid; border-radius:5px;
+        padding:2px 5px; overflow:hidden; min-height:17px; font-size:11px; line-height:14px; }
+  .ev .t { font-weight:600; font-size:12px; }
+  .ev .m { opacity:0.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .now { position:absolute; left:0; right:0; border-top:2px solid var(--red); z-index:5; }
+  .now:before { content:""; position:absolute; left:-5px; top:-6px; width:10px; height:10px;
+                border-radius:5px; background:var(--red); }
+  .nowlab { position:absolute; left:0; width:50px; text-align:right; font-size:11px; font-weight:600;
+            color:var(--red); margin-top:-7px; z-index:5; }
+  #err { display:none; position:absolute; right:12px; bottom:8px; left:12px; text-align:right; font-size:12px; color:var(--sub); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title" id="title"></div>
+    <div class="nav">
+      <button id="prev">&#8249;</button><button id="tod" class="pill">Today</button><button id="next">&#8250;</button>
+    </div>
+  </header>
+  <div class="row" id="dayhead"></div>
+  <div class="row" id="allday"></div>
+  <div id="grid"><div id="inner"></div></div>
+  <div id="err"></div>
+</div>
+<script>
+// Display settings
+var CFG = { dayStartHour: 7, dayEndHour: 21, theme: 'light', refreshMinutes: 10 };
+
+// Connection settings come from the address: index.html#id=DEPLOYMENT_ID&key=SECRET
+// They are remembered on the device, so this file holds nothing private.
+function readSettings() {
+  var s = {}, h = location.hash.replace(/^#/, '').split('&');
+  for (var i = 0; i < h.length; i++) {
+    var kv = h[i].split('=');
+    if (kv[0]) s[decodeURIComponent(kv[0])] = decodeURIComponent(kv.slice(1).join('='));
+  }
+  try {
+    if (s.id && s.key) localStorage.setItem('calSettings', JSON.stringify({ id: s.id, key: s.key }));
+    else s = JSON.parse(localStorage.getItem('calSettings') || '{}');
+  } catch (e) {}
+  if (s.theme) CFG.theme = s.theme;
+  return s;
+}
+var SET = readSettings();
+var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var state = { offset: 0, data: null, lastKey: '', lastTouch: 0 };
+
+function $(id) { return document.getElementById(id); }
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+function key(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function parseDay(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function hexRgb(h) {
+  h = (h || '#1a73e8').replace('#', '');
+  if (h.length === 3) h = h.replace(/./g, '$&$&');
+  var n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function mix(c, t, a) { var o = []; for (var i = 0; i < 3; i++) o.push(Math.round(c[i] + (t[i] - c[i]) * a)); return o; }
+function rgb(c, a) { return a == null ? 'rgb(' + c.join(',') + ')' : 'rgba(' + c.join(',') + ',' + a + ')'; }
+function fmtTime(d) {
+  var h = d.getHours(), m = d.getMinutes(), ap = h < 12 ? 'AM' : 'PM';
+  h = h % 12 || 12;
+  return h + (m ? ':' + pad(m) : '') + ' ' + ap;
+}
+function hourLabel(h) {
+  if (h === 12) return 'Noon';
+  if (h === 0 || h === 24) return '12 AM';
+  return (h % 12) + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+function minsOf(t, dayStart, dayEnd) {
+  if (t <= dayStart) return 0;
+  if (t >= dayEnd) return 1440;
+  var d = new Date(t);
+  return d.getHours() * 60 + d.getMinutes();
+}
+function colors(hex) {
+  var dark = CFG.theme === 'dark', c = hexRgb(hex);
+  return {
+    bg: rgb(mix(c, dark ? [0, 0, 0] : [255, 255, 255], dark ? 0.62 : 0.8)),
+    bar: rgb(c),
+    fg: rgb(mix(c, dark ? [255, 255, 255] : [0, 0, 0], dark ? 0.45 : 0.4))
+  };
+}
+
+function layout(list) {
+  list.sort(function (a, b) { return a.sm - b.sm || b.em - a.em; });
+  var cluster = [], cols = [], end = -1;
+  function flush() {
+    for (var i = 0; i < cluster.length; i++) cluster[i].n = cols.length;
+    cluster = []; cols = []; end = -1;
+  }
+  for (var i = 0; i < list.length; i++) {
+    var x = list[i];
+    if (cluster.length && x.sm >= end) flush();
+    var placed = false;
+    for (var c = 0; c < cols.length; c++) {
+      if (cols[c] <= x.sm) { cols[c] = x.em; x.col = c; placed = true; break; }
+    }
+    if (!placed) { x.col = cols.length; cols.push(x.em); }
+    cluster.push(x);
+    end = Math.max(end, x.em);
+  }
+  flush();
+}
+
+function render() {
+  var d = state.data;
+  if (!d) return;
+  var app = $('app');
+  app.className = CFG.theme === 'dark' ? 'dark' : 'light';
+  app.style.height = window.innerHeight + 'px';
+
+  var days = d.days.map(parseDay);
+  var now = new Date(), todayKey = key(now);
+
+  var a = days[0], b = days[6];
+  var title;
+  if (a.getMonth() === b.getMonth()) title = MONTHS[a.getMonth()] + ' <span class="yr">' + a.getFullYear() + '</span>';
+  else if (a.getFullYear() === b.getFullYear())
+    title = MONTHS[a.getMonth()].slice(0, 3) + ' – ' + MONTHS[b.getMonth()].slice(0, 3) + ' <span class="yr">' + a.getFullYear() + '</span>';
+  else title = MONTHS[a.getMonth()].slice(0, 3) + ' ' + a.getFullYear() + ' – ' + MONTHS[b.getMonth()].slice(0, 3) + ' <span class="yr">' + b.getFullYear() + '</span>';
+  $('title').innerHTML = title;
+
+  var hd = '<div class="gut"></div>';
+  for (var i = 0; i < 7; i++) {
+    var dt = days[i];
+    hd += '<div class="dh' + (key(dt) === todayKey ? ' today' : '') + '"><span class="wd">' + WD[dt.getDay()] +
+          '</span> <span class="dn">' + dt.getDate() + '</span></div>';
+  }
+  $('dayhead').innerHTML = hd;
+
+  var timed = [], allday = [];
+  for (i = 0; i < d.events.length; i++) (d.events[i].allDay ? allday : timed).push(d.events[i]);
+
+  // all-day bars
+  function idx(s) { var n = 0; for (var j = 0; j < 7; j++) if (d.days[j] < s) n++; return n; }
+  var bars = [];
+  for (i = 0; i < allday.length; i++) {
+    var e = allday[i], s = idx(e.startDay), en = idx(e.endDay);
+    if (en <= s) en = Math.min(7, s + 1);
+    if (s < 7 && en > 0) bars.push({ ev: e, s: s, e: en });
+  }
+  bars.sort(function (x, y) { return x.s - y.s || (y.e - y.s) - (x.e - x.s); });
+  var lanes = [];
+  for (i = 0; i < bars.length; i++) {
+    for (var l = 0; l < lanes.length; l++) if (lanes[l] <= bars[i].s) break;
+    lanes[l] = bars[i].e;
+    bars[i].lane = l;
+  }
+  var adh = Math.max(1, lanes.length) * 22 + 6;
+  var ad = '<div class="gut lbl">all-day</div><div class="adcols" style="height:' + adh + 'px">';
+  for (i = 0; i < 7; i++) {
+    var we = days[i].getDay() === 0 || days[i].getDay() === 6;
+    ad += '<div class="cell' + (we ? ' we' : '') + '" style="left:' + (i * 100 / 7) + '%;width:' + (100 / 7) + '%"></div>';
+  }
+  for (i = 0; i < bars.length; i++) {
+    var br = bars[i], k = colors(br.ev.color);
+    ad += '<div class="ad" style="left:calc(' + (br.s * 100 / 7) + '% + 3px);width:calc(' + ((br.e - br.s) * 100 / 7) +
+          '% - 5px);top:' + (br.lane * 22 + 4) + 'px;background:' + k.bg + ';color:' + k.fg + '">' + esc(br.ev.title) + '</div>';
+  }
+  $('allday').innerHTML = ad + '</div>';
+
+  // timed segments, split per day
+  var startH = CFG.dayStartHour, endH = CFG.dayEndHour;
+  var segs = [[], [], [], [], [], [], []];
+  for (i = 0; i < timed.length; i++) {
+    var ev = timed[i];
+    for (var j = 0; j < 7; j++) {
+      var ds = days[j].getTime();
+      var de = new Date(days[j].getFullYear(), days[j].getMonth(), days[j].getDate() + 1).getTime();
+      if (ev.end > ds && ev.start < de || (ev.start === ev.end && ev.start >= ds && ev.start < de)) {
+        var sm = minsOf(ev.start, ds, de), em = minsOf(ev.end, ds, de);
+        if (em <= sm) em = sm + 15;
+        segs[j].push({ ev: ev, sm: sm, em: em });
+        startH = Math.min(startH, Math.floor(sm / 60));
+        endH = Math.max(endH, Math.ceil(em / 60));
+      }
+    }
+  }
+  endH = Math.min(24, endH);
+  var total = (endH - startH) * 60;
+  function pct(m) { return (m - startH * 60) / total * 100; }
+
+  var todayIdx = -1;
+  for (i = 0; i < 7; i++) if (key(days[i]) === todayKey) todayIdx = i;
+  var nowMin = now.getHours() * 60 + now.getMinutes();
+  var showNow = todayIdx >= 0 && nowMin >= startH * 60 && nowMin <= endH * 60;
+
+  var g = '';
+  for (var h = startH; h <= endH; h++) {
+    var top = pct(h * 60);
+    g += '<div class="hl" style="top:' + top + '%"></div>';
+    if (!(showNow && Math.abs(nowMin - h * 60) < 13)) g += '<div class="hlab" style="top:' + top + '%">' + hourLabel(h) + '</div>';
+  }
+  if (showNow) g += '<div class="nowlab" style="top:' + pct(nowMin) + '%">' + fmtTime(now).replace(' AM', '').replace(' PM', '') + '</div>';
+
+  g += '<div class="cols">';
+  for (i = 0; i < 7; i++) {
+    var weekend = days[i].getDay() === 0 || days[i].getDay() === 6;
+    g += '<div class="col' + (weekend ? ' we' : '') + '" style="left:' + (i * 100 / 7) + '%;width:' + (100 / 7) + '%">';
+    g += '<div class="evs">';
+    layout(segs[i]);
+    for (j = 0; j < segs[i].length; j++) {
+      var x = segs[i][j], c = colors(x.ev.color), w = 100 / x.n, len = x.em - x.sm;
+      g += '<div class="ev" style="top:' + pct(x.sm) + '%;height:' + ((x.em - x.sm) / total * 100) + '%;left:calc(' + (x.col * w) +
+           '% + 2px);width:calc(' + w + '% - 4px);background:' + c.bg + ';border-left-color:' + c.bar + ';color:' + c.fg + '">' +
+           '<div class="t">' + esc(x.ev.title) + '</div>' +
+           (len >= 45 ? '<div class="m">' + fmtTime(new Date(x.ev.start)) + '</div>' : '') +
+           (len >= 75 && x.ev.location ? '<div class="m">' + esc(x.ev.location) + '</div>' : '') +
+           '</div>';
+    }
+    if (i === todayIdx && showNow) g += '<div class="now" style="top:' + pct(nowMin) + '%"></div>';
+    g += '</div></div>';
+  }
+  g += '</div>';
+  $('inner').innerHTML = g;
+}
+
+function jsonp(url, ok, fail) {
+  var name = 'cb' + Date.now(), s = document.createElement('script');
+  var timer = setTimeout(function () { done(); fail('timed out'); }, 30000);
+  function done() {
+    clearTimeout(timer);
+    window[name] = function () {};
+    if (s.parentNode) s.parentNode.removeChild(s);
+  }
+  window[name] = function (d) { done(); ok(d); };
+  s.onerror = function () { done(); fail('network error'); };
+  s.src = url + '&callback=' + name;
+  document.body.appendChild(s);
+}
+
+function showErr(msg) { $('err').textContent = msg; $('err').style.display = 'block'; }
+
+function load() {
+  state.lastKey = key(new Date());
+  if (!SET.id || !SET.key) {
+    $('app').className = CFG.theme === 'dark' ? 'dark' : 'light';
+    $('title').innerHTML = 'Setup needed';
+    showErr('Open this page with #id=YOUR_DEPLOYMENT_ID&key=YOUR_SECRET at the end of the address.');
+    return;
+  }
+  var url = 'https://script.google.com/macros/s/' + encodeURIComponent(SET.id) + '/exec?key=' +
+            encodeURIComponent(SET.key) + '&offset=' + state.offset + '&t=' + Date.now();
+  jsonp(url, function (d) {
+    if (d && d.error) { showErr('Calendar error: ' + d.error); return; }
+    state.data = d; $('err').style.display = 'none'; render();
+  }, function (msg) { showErr('Could not refresh (' + msg + ')'); });
+}
+function go(delta) {
+  state.lastTouch = Date.now();
+  state.offset = delta === 0 ? 0 : state.offset + delta;
+  load();
+}
+
+$('prev').onclick = function () { go(-1); };
+$('next').onclick = function () { go(1); };
+$('tod').onclick = function () { go(0); };
+
+var sx = null;
+document.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, false);
+document.addEventListener('touchend', function (e) {
+  if (sx === null) return;
+  var dx = e.changedTouches[0].clientX - sx;
+  sx = null;
+  if (Math.abs(dx) > 70) go(dx < 0 ? 1 : -1);
+}, false);
+document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+window.addEventListener('resize', render);
+
+setInterval(function () {
+  if (state.offset !== 0 && Date.now() - state.lastTouch > 5 * 60000) { state.offset = 0; load(); return; }
+  if (key(new Date()) !== state.lastKey) { load(); return; }
+  render();
+}, 60000);
+setInterval(load, CFG.refreshMinutes * 60000);
+
+load();
+</script>
+</body>
+</html>
