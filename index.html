@@ -38,8 +38,14 @@
   .ad { position:absolute; height:19px; line-height:19px; font-size:12px; font-weight:600;
         border-radius:4px; padding:0 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
         box-sizing:border-box; }
-  #grid { flex:1; position:relative; min-height:0; }
-  #inner { position:absolute; top:10px; bottom:12px; left:0; right:0; }
+  #gridwrap { flex:1; position:relative; min-height:0; }
+  #grid { position:absolute; top:0; bottom:0; left:0; right:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; }
+  #inner { position:relative; margin:10px 0 12px 0; }
+  .fade { position:absolute; left:56px; right:0; height:22px; pointer-events:none; z-index:20; display:none; }
+  .fade.top { top:0; background:linear-gradient(var(--bg), rgba(0,0,0,0)); }
+  .fade.bot { bottom:0; background:linear-gradient(rgba(0,0,0,0), var(--bg)); }
+  .light .fade.top { background:linear-gradient(#fff, rgba(255,255,255,0)); }
+  .light .fade.bot { background:linear-gradient(rgba(255,255,255,0), #fff); }
   .hl { position:absolute; left:56px; right:0; border-top:1px solid var(--line); }
   .hlab { position:absolute; left:0; width:50px; text-align:right; font-size:11px; color:var(--sub);
           margin-top:-7px; }
@@ -72,7 +78,7 @@
   </header>
   <div class="row" id="dayhead"></div>
   <div class="row" id="allday"></div>
-  <div id="grid"><div id="inner"></div></div>
+  <div id="gridwrap"><div id="grid"><div id="inner"></div></div><div class="fade top" id="fadeT"></div><div class="fade bot" id="fadeB"></div></div>
   <div id="err"></div>
 </div>
 <script>
@@ -99,7 +105,7 @@ function readSettings() {
 var SET = readSettings();
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-var state = { offset: 0, data: null, all: null, wx: null, lastKey: '', lastTouch: 0 };
+var state = { resetScroll: true, startH: 6, offset: 0, data: null, all: null, wx: null, lastKey: '', lastTouch: 0 };
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -201,22 +207,7 @@ function render() {
     var ev0 = d.events[i];
     if (ev0.allDay) { allday.push(ev0); continue; }
     if (allDayOnly(ev0.color)) continue; // skip timed events from all-day-only calendars
-    var sd = new Date(ev0.start), ed = new Date(Math.max(ev0.start, ev0.end - 60000));
-    var crosses = key(sd) !== key(ed);
-    if (ev0.end - ev0.start >= 12 * 3600000) {
-      // Shift of 12 hours or more: show as a bar. Drop the last day if the shift ends that morning.
-      var last = new Date(ed.getFullYear(), ed.getMonth(), ed.getDate());
-      if (crosses && ed.getHours() < 12) last.setDate(last.getDate() - 1);
-      last.setDate(last.getDate() + 1);
-      allday.push({
-        title: ev0.title + ' · ' + fmtTime(sd),
-        color: ev0.color,
-        startDay: key(sd),
-        endDay: key(last)
-      });
-    } else {
-      timed.push(ev0);
-    }
+    timed.push(ev0);
   }
 
   // all-day bars
@@ -248,7 +239,7 @@ function render() {
   $('allday').innerHTML = ad + '</div>';
 
   // timed segments, split per day
-  var startH = CFG.dayStartHour, endH = CFG.dayEndHour;
+  var startH = 6, endH = 21;
   var segs = [[], [], [], [], [], [], []];
   for (i = 0; i < timed.length; i++) {
     var ev = timed[i];
@@ -267,7 +258,11 @@ function render() {
   endH = Math.min(24, endH);
   var total = (endH - startH) * 60;
   function pct(m) { return (m - startH * 60) / total * 100; }
-  var pxPerMin = Math.max(0.1, ($('inner').clientHeight || 600) / total);
+  // Each hour is sized so 7 AM to 9 PM fills the screen; anything beyond scrolls.
+  var BASE_START = 6, BASE_END = 21;
+  var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / ((BASE_END - BASE_START) * 60));
+  $('inner').style.height = Math.round(total * pxPerMin) + 'px';
+  state.startH = startH;
   var labelMins = 44 / pxPerMin, trigMins = 20 / pxPerMin;
   for (i = 0; i < 7; i++) for (j = 0; j < segs[i].length; j++) {
     segs[i][j].emv = Math.max(segs[i][j].em, segs[i][j].sm + 18 / pxPerMin);
@@ -319,7 +314,21 @@ function render() {
     g += '</div></div>';
   }
   g += '</div>';
+  var keep = $('grid').scrollTop;
   $('inner').innerHTML = g;
+  if (state.resetScroll) { scrollToBase(); state.resetScroll = false; } else { $('grid').scrollTop = keep; }
+  updateFades();
+}
+
+function basePos() {
+  var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / (15 * 60));
+  return Math.max(0, (6 - (state.startH == null ? 6 : state.startH)) * 60 * pxPerMin);
+}
+function scrollToBase() { $('grid').scrollTop = basePos(); }
+function updateFades() {
+  var g = $('grid');
+  $('fadeT').style.display = g.scrollTop > 2 ? 'block' : 'none';
+  $('fadeB').style.display = g.scrollTop + g.clientHeight < g.scrollHeight - 2 ? 'block' : 'none';
 }
 
 // Plain request with no Google sign-in attached, so multiple signed-in accounts can't interfere.
@@ -424,6 +433,7 @@ function showWeek() {
   var d = weekData(state.offset);
   if (!d) { state.offset = 0; d = weekData(0); }
   state.data = d;
+  state.resetScroll = true;
   render();
 }
 
@@ -457,15 +467,24 @@ $('prev').onclick = function () { go(-1); };
 $('next').onclick = function () { go(1); };
 $('tod').onclick = function () { go(0); };
 
-var sx = null;
-document.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, false);
+var sx = null, sy = null;
+function inGrid(el) { while (el) { if (el.id === 'grid') return true; el = el.parentNode; } return false; }
+document.addEventListener('touchstart', function (e) {
+  sx = e.touches[0].clientX; sy = e.touches[0].clientY; state.lastTouch = Date.now();
+}, false);
 document.addEventListener('touchend', function (e) {
   if (sx === null) return;
-  var dx = e.changedTouches[0].clientX - sx;
-  sx = null;
-  if (Math.abs(dx) > 70) go(dx < 0 ? 1 : -1);
+  var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+  sx = null; sy = null;
+  if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? 1 : -1);
 }, false);
-document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+// Block page bounce everywhere except inside the scrolling hours.
+document.addEventListener('touchmove', function (e) { if (!inGrid(e.target)) e.preventDefault(); }, { passive: false });
+$('grid').addEventListener('scroll', function () { state.lastTouch = Date.now(); updateFades(); }, false);
+// Return to the 6 AM view after 1 minute without a touch.
+setInterval(function () {
+  if (Date.now() - state.lastTouch > 60000 && Math.abs($('grid').scrollTop - basePos()) > 2) { scrollToBase(); updateFades(); }
+}, 10000);
 window.addEventListener('resize', render);
 
 setInterval(function () {
