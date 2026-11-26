@@ -534,20 +534,14 @@ document.addEventListener('touchend', function (e) {
 }, false);
 // Block page bounce everywhere except inside the scrolling hours.
 document.addEventListener('touchmove', function (e) { if (!inGrid(e.target)) e.preventDefault(); }, { passive: false });
-// Spring back to the starting view as soon as scrolling ends.
-// At the very top or bottom it starts right away, and scrolling past the edge
-// (the rubber-band bounce on iPad and Mac) is blocked so it can't delay the glide.
-var touching = false, gliding = false, settleTimer = null, glideFrame = null, lastWheel = 0, swallow = false;
-function maxTop() { var g = $('grid'); return Math.max(0, g.scrollHeight - g.clientHeight); }
-function atEdge() { var t = $('grid').scrollTop; return maxTop() > 0 && (t <= 1 || t >= maxTop() - 1); }
-function stopGlide() { gliding = false; if (glideFrame) cancelAnimationFrame(glideFrame); }
+// Spring back to the 6 AM to 9 PM view as soon as the finger lifts and scrolling stops.
+var touching = false, gliding = false, settleTimer = null, glideFrame = null;
 function glideToBase() {
   var g = $('grid'), from = g.scrollTop, to = basePos(), t0 = Date.now(), dur = 1280;
-  clearTimeout(settleTimer);
   if (Math.abs(from - to) < 2) return;
-  gliding = true; swallow = true;
+  gliding = true;
   function step() {
-    if (touching || !gliding) { gliding = false; return; }
+    if (touching) { gliding = false; return; }
     var p = Math.min(1, (Date.now() - t0) / dur), e = 1 - Math.pow(1 - p, 3);
     g.scrollTop = from + (to - from) * e;
     updateFades();
@@ -559,32 +553,15 @@ function scheduleSettle() {
   clearTimeout(settleTimer);
   settleTimer = setTimeout(function () { if (!touching && !gliding) glideToBase(); }, 150);
 }
-// iPad: keep the grid 1 pixel inside its edges so the rubber-band bounce does not start.
 $('grid').addEventListener('touchstart', function () {
-  touching = true; stopGlide(); clearTimeout(settleTimer);
-  var g = $('grid'), m = maxTop();
-  if (m > 2) { if (g.scrollTop <= 0) g.scrollTop = 1; else if (g.scrollTop >= m) g.scrollTop = m - 1; }
+  touching = true; gliding = false; clearTimeout(settleTimer);
+  if (glideFrame) cancelAnimationFrame(glideFrame);
 }, false);
-function release() { touching = false; if (atEdge()) glideToBase(); else scheduleSettle(); }
-$('grid').addEventListener('touchend', release, false);
-$('grid').addEventListener('touchcancel', release, false);
-// Mac trackpad and mouse wheel.
-$('grid').addEventListener('wheel', function (e) {
-  var now = Date.now(), newGesture = now - lastWheel > 200, g = $('grid'), m = maxTop();
-  lastWheel = now; state.lastTouch = now;
-  if (gliding || swallow) {
-    // The rest of the scroll motion that started the glide (including coasting) is ignored,
-    // even after the glide ends; a new scroll after a short pause takes over.
-    if (newGesture) { stopGlide(); swallow = false; } else { e.preventDefault(); return; }
-  }
-  var outward = (e.deltaY < 0 && g.scrollTop <= 0) || (e.deltaY > 0 && g.scrollTop >= m - 0.5);
-  if (outward) { e.preventDefault(); glideToBase(); return; }
-  scheduleSettle();
-}, { passive: false });
+$('grid').addEventListener('touchend', function () { touching = false; scheduleSettle(); }, false);
+$('grid').addEventListener('touchcancel', function () { touching = false; scheduleSettle(); }, false);
 $('grid').addEventListener('scroll', function () {
   state.lastTouch = Date.now(); updateFades();
-  if (touching || gliding) return;
-  if (atEdge()) glideToBase(); else scheduleSettle();
+  if (!touching && !gliding) scheduleSettle();
 }, false);
 
 window.addEventListener('resize', render);
