@@ -17,6 +17,11 @@
   .title { font-size:30px; font-weight:700; letter-spacing:-0.5px; }
   .title .yr { font-weight:400; color:var(--red); }
   .nav button { font:inherit; font-size:17px; color:var(--red); background:none; border:0; padding:4px 10px; }
+  /* Larger invisible tap areas: same look, easier to hit */
+  .nav button { position:relative; -webkit-tap-highlight-color:transparent; }
+  .nav button:after { content:""; position:absolute; top:-10px; bottom:-10px; left:0; right:0; }
+  #prev { padding:12px 10px 12px 28px; margin:-8px 0 -8px -18px; }
+  #next { padding:12px 28px 12px 10px; margin:-8px -18px -8px 0; }
   .nav .pill { border:1px solid var(--line); border-radius:16px; padding:4px 14px; margin:0 4px; }
   .wx { margin-left:auto; margin-right:16px; font-size:17px; color:var(--fg); white-space:nowrap; padding-bottom:4px; }
   .wx .ic { font-size:22px; vertical-align:-2px; margin-right:4px; }
@@ -107,7 +112,7 @@ function readSettings() {
 var SET = readSettings();
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-var state = { resetScroll: true, startH: 6, offset: 0, data: null, all: null, wx: null, lastKey: '', lastTouch: 0 };
+var state = { resetScroll: true, startH: 5, offset: 0, data: null, all: null, wx: null, lastKey: '', lastTouch: 0 };
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -240,7 +245,7 @@ function render() {
   $('allday').innerHTML = ad + '</div>';
 
   // timed segments, split per day
-  var startH = 6, endH = 21;
+  var startH = 5, endH = 22;
   var segs = [[], [], [], [], [], [], []];
   for (i = 0; i < timed.length; i++) {
     var ev = timed[i];
@@ -260,7 +265,7 @@ function render() {
   var total = (endH - startH) * 60;
   function pct(m) { return (m - startH * 60) / total * 100; }
   // Each hour is sized so 7 AM to 9 PM fills the screen; anything beyond scrolls.
-  var BASE_START = 6, BASE_END = 21;
+  var BASE_START = 5.75, BASE_END = 21.25;
   var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / ((BASE_END - BASE_START) * 60));
   $('inner').style.height = Math.round(total * pxPerMin) + 'px';
   state.startH = startH;
@@ -323,8 +328,8 @@ function render() {
 }
 
 function basePos() {
-  var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / (15 * 60));
-  return Math.max(0, (6 - (state.startH == null ? 6 : state.startH)) * 60 * pxPerMin);
+  var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / (15.5 * 60));
+  return Math.max(0, (5.75 - (state.startH == null ? 5 : state.startH)) * 60 * pxPerMin);
 }
 function scrollToBase() { $('grid').scrollTop = basePos(); }
 function updateFades() {
