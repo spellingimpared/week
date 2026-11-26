@@ -44,8 +44,10 @@
   .col.we { background:var(--we); }
   .evs { position:absolute; top:10px; bottom:12px; left:0; right:0; }
   .ev { position:absolute; box-sizing:border-box; border-left:3px solid; border-radius:5px;
-        padding:2px 5px; overflow:hidden; min-height:17px; font-size:11px; line-height:14px; }
-  .ev .t { font-weight:600; font-size:12px; }
+        padding:2px 5px; overflow:hidden; min-height:17px; box-shadow:0 0 0 1px var(--bg); font-size:11px; line-height:14px; }
+  .ev .t { font-weight:600; font-size:12px; word-wrap:break-word; }
+  .ev .t.one { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ev .t.one .m { font-weight:400; }
   .ev .m { opacity:0.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .now { position:absolute; left:0; right:0; border-top:2px solid var(--red); z-index:5; }
   .now:before { content:""; position:absolute; left:-5px; top:-6px; width:10px; height:10px;
@@ -134,25 +136,30 @@ function colors(hex) {
   };
 }
 
+// iOS-style overlap: later events stack on top with a small indent and keep the rest of the width.
+// Events starting within 30 minutes of each other share their row side by side.
 function layout(list) {
   list.sort(function (a, b) { return a.sm - b.sm || b.em - a.em; });
-  var cluster = [], cols = [], end = -1;
-  function flush() {
-    for (var i = 0; i < cluster.length; i++) cluster[i].n = cols.length;
-    cluster = []; cols = []; end = -1;
-  }
+  var INDENT = 18, MAXLEFT = 54;
   for (var i = 0; i < list.length; i++) {
-    var x = list[i];
-    if (cluster.length && x.sm >= end) flush();
-    var placed = false;
-    for (var c = 0; c < cols.length; c++) {
-      if (cols[c] <= x.sm) { cols[c] = x.em; x.col = c; placed = true; break; }
+    var x = list[i], depth = -1, sib = null;
+    for (var j = 0; j < i; j++) {
+      var p = list[j];
+      if (p.emv <= x.sm) continue;
+      if (x.sm - p.sm < 30 && p.em - x.em < 30 && !sib) sib = p;
+      depth = Math.max(depth, p.group.depth);
     }
-    if (!placed) { x.col = cols.length; cols.push(x.em); }
-    cluster.push(x);
-    end = Math.max(end, x.em);
+    if (sib) { x.group = sib.group; }
+    else { x.group = { depth: depth + 1, members: [] }; }
+    x.group.members.push(x);
+    x.z = i + 1;
   }
-  flush();
+  for (i = 0; i < list.length; i++) {
+    var g = list[i].group, base = Math.min(g.depth * INDENT, MAXLEFT);
+    var k = g.members.length, w = (100 - base) / k, idx = g.members.indexOf(list[i]);
+    list[i].left = base + idx * w;
+    list[i].width = w;
+  }
 }
 
 function render() {
@@ -251,6 +258,11 @@ function render() {
   endH = Math.min(24, endH);
   var total = (endH - startH) * 60;
   function pct(m) { return (m - startH * 60) / total * 100; }
+  var pxPerMin = Math.max(0.1, ($('inner').clientHeight || 600) / total);
+  var labelMins = 44 / pxPerMin, trigMins = 20 / pxPerMin;
+  for (i = 0; i < 7; i++) for (j = 0; j < segs[i].length; j++) {
+    segs[i][j].emv = Math.max(segs[i][j].em, segs[i][j].sm + 18 / pxPerMin);
+  }
 
   var todayIdx = -1;
   for (i = 0; i < 7; i++) if (key(days[i]) === todayKey) todayIdx = i;
@@ -272,12 +284,26 @@ function render() {
     g += '<div class="evs">';
     layout(segs[i]);
     for (j = 0; j < segs[i].length; j++) {
-      var x = segs[i][j], c = colors(x.ev.color), w = 100 / x.n, len = x.em - x.sm;
-      g += '<div class="ev" style="top:' + pct(x.sm) + '%;height:' + ((x.em - x.sm) / total * 100) + '%;left:calc(' + (x.col * w) +
-           '% + 2px);width:calc(' + w + '% - 4px);background:' + c.bg + ';border-left-color:' + c.bar + ';color:' + c.fg + '">' +
-           '<div class="t">' + esc(x.ev.title) + '</div>' +
-           (len >= 45 ? '<div class="m">' + fmtTime(new Date(x.ev.start)) + '</div>' : '') +
-           (len >= 75 && x.ev.location ? '<div class="m">' + esc(x.ev.location) + '</div>' : '') +
+      var x = segs[i][j], c = colors(x.ev.color), len = x.em - x.sm;
+      var t = fmtTime(new Date(x.ev.start));
+      // If later events cover the top of this one, move its label to the open space below them.
+      var ls = x.sm, moved = true;
+      while (moved) {
+        moved = false;
+        for (var q = 0; q < segs[i].length; q++) {
+          var o = segs[i][q];
+          if (o.z > x.z && o.sm < ls + trigMins && o.emv > ls && o.sm < x.em) { ls = o.emv; moved = true; }
+        }
+      }
+      var shift = (ls > x.sm && x.em - ls >= 0.6 * labelMins) ? (ls - x.sm) * pxPerMin : 0;
+      var pad = shift ? '<div style="height:' + Math.round(shift) + 'px"></div>' : '';
+      g += '<div class="ev" style="top:' + pct(x.sm) + '%;height:' + (len / total * 100) + '%;left:calc(' + x.left +
+           '% + 1px);width:calc(' + x.width + '% - 3px);z-index:' + x.z + ';background:' + c.bg + ';border-left-color:' + c.bar +
+           ';color:' + c.fg + '">' + pad +
+           (len < 45
+             ? '<div class="t one">' + esc(x.ev.title) + ' <span class="m">' + t + '</span></div>'
+             : '<div class="t">' + esc(x.ev.title) + '</div><div class="m">' + t + '</div>' +
+               (len >= 75 && x.ev.location ? '<div class="m">' + esc(x.ev.location) + '</div>' : '')) +
            '</div>';
     }
     if (i === todayIdx && showNow) g += '<div class="now" style="top:' + pct(nowMin) + '%"></div>';
