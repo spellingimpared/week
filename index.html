@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Calendar</title>
 <style>
-  .light { --bg:#fff; --fg:#000; --sub:#8e8e93; --line:#e5e5ea; --we:#f9f9fb; --red:#ff3b30; }
+  .light { --bg:#f7f6f4; --fg:#000; --sub:#8e8e93; --line:#e2e0dc; --we:#efeeeb; --red:#ff3b30; }
   .dark  { --bg:#000; --fg:#fff; --sub:#8e8e93; --line:#2c2c2e; --we:#0b0b0c; --red:#ff453a; }
   html, body { margin:0; padding:0; height:100%; overflow:hidden; }
   body { font-family:-apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -49,8 +49,8 @@
   .fade { position:absolute; left:56px; right:0; height:22px; pointer-events:none; z-index:20; display:none; }
   .fade.top { top:0; background:linear-gradient(var(--bg), rgba(0,0,0,0)); }
   .fade.bot { bottom:0; background:linear-gradient(rgba(0,0,0,0), var(--bg)); }
-  .light .fade.top { background:linear-gradient(#fff, rgba(255,255,255,0)); }
-  .light .fade.bot { background:linear-gradient(rgba(255,255,255,0), #fff); }
+  .light .fade.top { background:linear-gradient(#f7f6f4, rgba(247,246,244,0)); }
+  .light .fade.bot { background:linear-gradient(rgba(247,246,244,0), #f7f6f4); }
   .hl { position:absolute; left:56px; right:0; border-top:1px solid var(--line); }
   .hlab { position:absolute; left:0; width:50px; text-align:right; font-size:11px; color:var(--sub);
           margin-top:-7px; }
