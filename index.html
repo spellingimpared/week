@@ -201,8 +201,8 @@ function render() {
     if (ev0.allDay) { allday.push(ev0); continue; }
     var sd = new Date(ev0.start), ed = new Date(Math.max(ev0.start, ev0.end - 60000));
     var crosses = key(sd) !== key(ed);
-    if (ev0.end - ev0.start >= 12 * 3600000 || crosses) {
-      // Long or overnight shift: show as a bar. Drop the last day if the shift ends that morning.
+    if (ev0.end - ev0.start >= 12 * 3600000) {
+      // Shift of 12 hours or more: show as a bar. Drop the last day if the shift ends that morning.
       var last = new Date(ed.getFullYear(), ed.getMonth(), ed.getDate());
       if (crosses && ed.getHours() < 12) last.setDate(last.getDate() - 1);
       last.setDate(last.getDate() + 1);
