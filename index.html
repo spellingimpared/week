@@ -18,6 +18,11 @@
   .title .yr { font-weight:400; color:var(--red); }
   .nav button { font:inherit; font-size:17px; color:var(--red); background:none; border:0; padding:4px 10px; }
   .nav .pill { border:1px solid var(--line); border-radius:16px; padding:4px 14px; margin:0 4px; }
+  .wx { margin-left:auto; margin-right:16px; font-size:17px; color:var(--fg); white-space:nowrap; padding-bottom:4px; }
+  .wx .ic { font-size:22px; vertical-align:-2px; margin-right:4px; }
+  .wx .tmp { font-weight:600; }
+  .wx .sub { color:var(--sub); margin-left:8px; font-size:15px; }
+  .dwx { font-size:11px; color:var(--sub); margin-top:2px; height:14px; white-space:nowrap; }
   .row { display:flex; }
   .gut { width:56px; flex:none; }
   #dayhead { border-bottom:1px solid var(--line); }
@@ -61,6 +66,7 @@
 <div id="app">
   <header>
     <div class="title" id="title"></div>
+    <div class="wx" id="wx"></div>
     <div class="nav">
       <button id="prev">&#8249;</button><button id="tod" class="pill">Today</button><button id="next">&#8250;</button>
     </div>
@@ -72,7 +78,8 @@
 </div>
 <script>
 // Display settings
-var CFG = { dayStartHour: 7, dayEndHour: 21, theme: 'light', refreshMinutes: 10 };
+var CFG = { dayStartHour: 7, dayEndHour: 21, theme: 'light', refreshMinutes: 10,
+            lat: 39.95, lon: -75.16 };   // weather location: Philadelphia
 
 // Connection settings come from the address: index.html#id=DEPLOYMENT_ID&key=SECRET
 // They are remembered on the device, so this file holds nothing private.
@@ -92,7 +99,7 @@ function readSettings() {
 var SET = readSettings();
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-var state = { offset: 0, data: null, all: null, lastKey: '', lastTouch: 0 };
+var state = { offset: 0, data: null, all: null, wx: null, lastKey: '', lastTouch: 0 };
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -184,9 +191,10 @@ function render() {
   for (var i = 0; i < 7; i++) {
     var dt = days[i];
     hd += '<div class="dh' + (key(dt) === todayKey ? ' today' : '') + '"><span class="wd">' + WD[dt.getDay()] +
-          '</span> <span class="dn">' + dt.getDate() + '</span></div>';
+          '</span> <span class="dn">' + dt.getDate() + '</span>' + dayWx(key(dt)) + '</div>';
   }
   $('dayhead').innerHTML = hd;
+  $('wx').innerHTML = nowWx();
 
   var timed = [], allday = [];
   for (i = 0; i < d.events.length; i++) {
@@ -350,6 +358,59 @@ function jsonp(url, ok, fail) {
 
 function showErr(msg) { $('err').textContent = msg; $('err').style.display = 'block'; }
 
+// Weather from Open-Meteo (free, no account needed)
+var WX = {
+  0: ['☀️', 'Clear'], 1: ['🌤', 'Mostly Clear'], 2: ['⛅', 'Partly Cloudy'], 3: ['☁️', 'Cloudy'],
+  45: ['🌫', 'Fog'], 48: ['🌫', 'Fog'], 51: ['🌦', 'Drizzle'], 53: ['🌦', 'Drizzle'], 55: ['🌦', 'Drizzle'],
+  56: ['🌧', 'Freezing Drizzle'], 57: ['🌧', 'Freezing Drizzle'], 61: ['🌧', 'Rain'], 63: ['🌧', 'Rain'],
+  65: ['🌧', 'Heavy Rain'], 66: ['🌧', 'Freezing Rain'], 67: ['🌧', 'Freezing Rain'], 71: ['🌨', 'Snow'],
+  73: ['🌨', 'Snow'], 75: ['❄️', 'Heavy Snow'], 77: ['🌨', 'Snow'], 80: ['🌦', 'Showers'], 81: ['🌧', 'Showers'],
+  82: ['🌧', 'Heavy Showers'], 85: ['🌨', 'Snow Showers'], 86: ['🌨', 'Snow Showers'], 95: ['⛈', 'Thunderstorms'],
+  96: ['⛈', 'Thunderstorms'], 99: ['⛈', 'Thunderstorms']
+};
+function wxInfo(code, isDay) {
+  var w = WX[code] || ['', ''];
+  if (code === 0 && isDay === 0) return ['🌙', 'Clear'];
+  return w;
+}
+function deg(v) { return Math.round(v) + '°'; }
+function nowWx() {
+  var w = state.wx;
+  if (!w || !w.current) return '';
+  var c = w.current, info = wxInfo(c.weather_code, c.is_day), t = key(new Date()), d = w.daily, s = '';
+  for (var i = 0; d && i < d.time.length; i++) {
+    if (d.time[i] === t) s = '<span class="sub">H ' + deg(d.temperature_2m_max[i]) + '  L ' + deg(d.temperature_2m_min[i]) + '</span>';
+  }
+  return '<span class="ic">' + info[0] + '</span><span class="tmp">' + deg(c.temperature_2m) + '</span> ' +
+         '<span class="sub" style="margin-left:4px">' + info[1] + '</span>' + s;
+}
+function dayWx(k) {
+  var d = state.wx && state.wx.daily;
+  if (!d) return '<div class="dwx"></div>';
+  for (var i = 0; i < d.time.length; i++) {
+    if (d.time[i] === k) {
+      var p = d.precipitation_probability_max ? d.precipitation_probability_max[i] : null;
+      return '<div class="dwx">' + wxInfo(d.weather_code[i], 1)[0] + ' ' + deg(d.temperature_2m_max[i]) + ' / ' +
+             deg(d.temperature_2m_min[i]) + (p != null && p >= 30 ? ' · ' + p + '%' : '') + '</div>';
+    }
+  }
+  return '<div class="dwx"></div>';
+}
+function loadWx() {
+  var x = new XMLHttpRequest();
+  x.open('GET', 'https://api.open-meteo.com/v1/forecast?latitude=' + CFG.lat + '&longitude=' + CFG.lon +
+    '&current=temperature_2m,weather_code,is_day' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max' +
+    '&temperature_unit=fahrenheit&timezone=auto&past_days=14&forecast_days=16', true);
+  x.timeout = 30000;
+  x.onload = function () {
+    if (x.status !== 200) return;
+    try { state.wx = JSON.parse(x.responseText); } catch (e) { return; }
+    render();
+  };
+  x.send();
+}
+
 function weekData(offset) {
   var all = state.all, wk = null;
   for (var i = 0; i < all.weeks.length; i++) if (all.weeks[i].offset === offset) wk = all.weeks[i];
@@ -419,8 +480,10 @@ setInterval(function () {
   render();
 }, 60000);
 setInterval(load, CFG.refreshMinutes * 60000);
+setInterval(loadWx, 30 * 60000);
 
 load();
+loadWx();
 </script>
 </body>
 </html>
