@@ -22,7 +22,6 @@
   .wx .ic { font-size:22px; vertical-align:-2px; margin-right:4px; }
   .wx .tmp { font-weight:600; }
   .wx .sub { color:var(--sub); margin-left:8px; font-size:15px; }
-  .dwx { font-size:11px; color:var(--sub); margin-top:2px; height:14px; white-space:nowrap; }
   .row { display:flex; }
   .gut { width:56px; flex:none; }
   #dayhead { border-bottom:1px solid var(--line); }
@@ -191,7 +190,7 @@ function render() {
   for (var i = 0; i < 7; i++) {
     var dt = days[i];
     hd += '<div class="dh' + (key(dt) === todayKey ? ' today' : '') + '"><span class="wd">' + WD[dt.getDay()] +
-          '</span> <span class="dn">' + dt.getDate() + '</span>' + dayWx(key(dt)) + '</div>';
+          '</span> <span class="dn">' + dt.getDate() + '</span></div>';
   }
   $('dayhead').innerHTML = hd;
   $('wx').innerHTML = nowWx();
@@ -384,24 +383,12 @@ function nowWx() {
   return '<span class="ic">' + info[0] + '</span><span class="tmp">' + deg(c.temperature_2m) + '</span> ' +
          '<span class="sub" style="margin-left:4px">' + info[1] + '</span>' + s;
 }
-function dayWx(k) {
-  var d = state.wx && state.wx.daily;
-  if (!d) return '<div class="dwx"></div>';
-  for (var i = 0; i < d.time.length; i++) {
-    if (d.time[i] === k) {
-      var p = d.precipitation_probability_max ? d.precipitation_probability_max[i] : null;
-      return '<div class="dwx">' + wxInfo(d.weather_code[i], 1)[0] + ' ' + deg(d.temperature_2m_max[i]) + ' / ' +
-             deg(d.temperature_2m_min[i]) + (p != null && p >= 30 ? ' · ' + p + '%' : '') + '</div>';
-    }
-  }
-  return '<div class="dwx"></div>';
-}
 function loadWx() {
   var x = new XMLHttpRequest();
   x.open('GET', 'https://api.open-meteo.com/v1/forecast?latitude=' + CFG.lat + '&longitude=' + CFG.lon +
     '&current=temperature_2m,weather_code,is_day' +
-    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max' +
-    '&temperature_unit=fahrenheit&timezone=auto&past_days=14&forecast_days=16', true);
+    '&daily=temperature_2m_max,temperature_2m_min' +
+    '&temperature_unit=fahrenheit&timezone=auto&forecast_days=1', true);
   x.timeout = 30000;
   x.onload = function () {
     if (x.status !== 200) return;
