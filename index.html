@@ -57,8 +57,6 @@
   .cols { position:absolute; left:56px; right:0; top:0; bottom:0; }
   .col { position:absolute; top:-10px; bottom:-12px; border-left:1px solid var(--line); }
   .col.we { background:var(--we); }
-  .light .col.tdy, .light .cell.tdy { background:rgba(255,59,48,0.05); }
-  .dark .col.tdy, .dark .cell.tdy { background:rgba(255,69,58,0.09); }
   .evs { position:absolute; top:10px; bottom:12px; left:0; right:0; }
   .ev { position:absolute; box-sizing:border-box; border-left:3px solid; border-radius:5px;
         padding:2px 5px; overflow:hidden; min-height:17px; box-shadow:0 0 0 1px var(--bg); font-size:11px; line-height:14px; }
@@ -90,7 +88,7 @@
 </div>
 <script>
 // Display settings
-var CFG = { dayStartHour: 7, dayEndHour: 21, theme: 'light', refreshMinutes: 10,
+var CFG = { dayStartHour: 7, dayEndHour: 21, theme: 'auto', refreshMinutes: 10,
             lat: 39.95, lon: -75.16,     // weather location: Philadelphia
             allDayOnlyColors: ['#9FE1E7'] };  // calendars (by color) that show only all-day events: school
 
@@ -107,6 +105,7 @@ function readSettings() {
     else s = JSON.parse(localStorage.getItem('calSettings') || '{}');
   } catch (e) {}
   if (s.theme) CFG.theme = s.theme;
+  if (CFG.theme !== 'light' && CFG.theme !== 'dark') CFG.theme = 'auto';
   return s;
 }
 var SET = readSettings();
@@ -171,14 +170,31 @@ function tone(c, sat, light) {
 }
 // Dark mode uses the "outline" look: near-black fill, bright edge stripe, colored text.
 // past = true fades the event toward the page background (solid, not see-through).
+// 'auto' = light from sunrise to sunset, dark otherwise (7 AM / 7 PM until the weather loads).
+function isDark() {
+  if (CFG.theme !== 'auto') return CFG.theme === 'dark';
+  var now = new Date(), d = state.wx && state.wx.daily, rise = null, set = null;
+  function at(s) { var p = s.split(/[-T:]/); return new Date(+p[0], +p[1] - 1, +p[2], +p[3], +p[4]); }
+  if (d && d.sunrise && d.sunset && d.sunrise[0]) { rise = at(d.sunrise[0]); set = at(d.sunset[0]); }
+  else { rise = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 7); set = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 19); }
+  return now < rise || now >= set;
+}
+function grayOf(c) { var y = Math.round(c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11); return [y, y, y]; }
 function colors(hex, past) {
-  var dark = CFG.theme === 'dark', c = hexRgb(hex), page = dark ? [0, 0, 0] : [255, 255, 255], bg, bar, fg;
+  var dark = isDark(), c = hexRgb(hex), page = dark ? [0, 0, 0] : [255, 255, 255], bg, bar, fg;
   if (dark) {
     bg = tone(c, 0.30, 0.09); bar = tone(c, 0.80, 0.56); fg = tone(c, 0.75, 0.72);
   } else {
-    bg = mix(c, page, 0.8); bar = c; fg = mix(c, [0, 0, 0], 0.4);
+    // Daytime outline look: near-white tinted fill, strong stripe, dark colored text; every calendar equally strong.
+    bg = tone(c, 0.60, 0.90); bar = tone(c, 0.75, 0.45); fg = tone(c, 0.75, 0.27);
   }
-  if (past) { var f = dark ? 0.55 : 0.6; bg = mix(bg, page, f); bar = mix(bar, page, f); fg = mix(fg, page, f); }
+  if (past) {
+    if (dark) { bg = mix(bg, page, 0.55); bar = mix(bar, page, 0.55); fg = mix(fg, page, 0.55); }
+    else {
+      // Daytime: fade toward gray, about half as much as before, so past events stay readable.
+      bg = mix(bg, [246, 246, 246], 0.6); bar = mix(mix(bar, grayOf(bar), 0.6), page, 0.35); fg = mix(mix(fg, grayOf(fg), 0.6), page, 0.3);
+    }
+  }
   return { bg: rgb(bg), bar: rgb(bar), fg: rgb(fg) };
 }
 
@@ -212,7 +228,7 @@ function render() {
   var d = state.data;
   if (!d) return;
   var app = $('app');
-  app.className = CFG.theme === 'dark' ? 'dark' : 'light';
+  app.className = isDark() ? 'dark' : 'light';
   app.style.height = window.innerHeight + 'px';
 
   var days = d.days.map(parseDay);
@@ -441,7 +457,7 @@ function loadWx() {
   var x = new XMLHttpRequest();
   x.open('GET', 'https://api.open-meteo.com/v1/forecast?latitude=' + CFG.lat + '&longitude=' + CFG.lon +
     '&current=temperature_2m,weather_code,is_day' +
-    '&daily=temperature_2m_max,temperature_2m_min' +
+    '&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset' +
     '&temperature_unit=fahrenheit&timezone=auto&forecast_days=1', true);
   x.timeout = 30000;
   x.onload = function () {
@@ -478,7 +494,7 @@ function showWeek() {
 function load() {
   state.lastKey = key(new Date());
   if (!SET.id || !SET.key) {
-    $('app').className = CFG.theme === 'dark' ? 'dark' : 'light';
+    $('app').className = isDark() ? 'dark' : 'light';
     $('title').innerHTML = 'Setup needed';
     showErr('Open this page with #id=YOUR_DEPLOYMENT_ID&key=YOUR_SECRET at the end of the address.');
     return;
