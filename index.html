@@ -140,7 +140,7 @@ function colors(hex) {
 // Events starting within 30 minutes of each other share their row side by side.
 function layout(list) {
   list.sort(function (a, b) { return a.sm - b.sm || b.em - a.em; });
-  var INDENT = 18, MAXLEFT = 54;
+  var INDENT = 4.5, MAXLEFT = 54;
   for (var i = 0; i < list.length; i++) {
     var x = list[i], depth = -1, sib = null;
     for (var j = 0; j < i; j++) {
