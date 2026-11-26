@@ -182,7 +182,26 @@ function render() {
   $('dayhead').innerHTML = hd;
 
   var timed = [], allday = [];
-  for (i = 0; i < d.events.length; i++) (d.events[i].allDay ? allday : timed).push(d.events[i]);
+  for (i = 0; i < d.events.length; i++) {
+    var ev0 = d.events[i];
+    if (ev0.allDay) { allday.push(ev0); continue; }
+    var sd = new Date(ev0.start), ed = new Date(Math.max(ev0.start, ev0.end - 60000));
+    var crosses = key(sd) !== key(ed);
+    if (ev0.end - ev0.start >= 12 * 3600000 || crosses) {
+      // Long or overnight shift: show as a bar. Drop the last day if the shift ends that morning.
+      var last = new Date(ed.getFullYear(), ed.getMonth(), ed.getDate());
+      if (crosses && ed.getHours() < 12) last.setDate(last.getDate() - 1);
+      last.setDate(last.getDate() + 1);
+      allday.push({
+        title: ev0.title + ' · ' + fmtTime(sd),
+        color: ev0.color,
+        startDay: key(sd),
+        endDay: key(last)
+      });
+    } else {
+      timed.push(ev0);
+    }
+  }
 
   // all-day bars
   function idx(s) { var n = 0; for (var j = 0; j < 7; j++) if (d.days[j] < s) n++; return n; }
