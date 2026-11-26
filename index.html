@@ -268,6 +268,27 @@ function render() {
   $('inner').innerHTML = g;
 }
 
+// Plain request with no Google sign-in attached, so multiple signed-in accounts can't interfere.
+function getData(url, ok, fail) {
+  var x = new XMLHttpRequest();
+  x.open('GET', url + '&callback=cb', true);
+  x.withCredentials = false;
+  x.timeout = 30000;
+  x.onload = function () {
+    var t = x.responseText || '', a = t.indexOf('('), b = t.lastIndexOf(')');
+    if (x.status === 200 && a > -1 && b > a) {
+      var d;
+      try { d = JSON.parse(t.slice(a + 1, b)); } catch (e) { fail('bad data'); return; }
+      ok(d);
+    } else {
+      fail('HTTP ' + x.status);
+    }
+  };
+  x.onerror = function () { jsonp(url, ok, function (m) { fail('request blocked; ' + m); }); };
+  x.ontimeout = function () { fail('timed out'); };
+  x.send();
+}
+
 function jsonp(url, ok, fail) {
   var name = 'cb' + Date.now(), s = document.createElement('script');
   var timer = setTimeout(function () { done(); fail('timed out'); }, 30000);
@@ -294,7 +315,7 @@ function load() {
   }
   var url = 'https://script.google.com/macros/s/' + encodeURIComponent(SET.id) + '/exec?key=' +
             encodeURIComponent(SET.key) + '&offset=' + state.offset + '&t=' + Date.now();
-  jsonp(url, function (d) {
+  getData(url, function (d) {
     if (d && d.error) { showErr('Calendar error: ' + d.error); return; }
     state.data = d; $('err').style.display = 'none'; render();
   }, function (msg) { showErr('Could not refresh (' + msg + ')'); });
