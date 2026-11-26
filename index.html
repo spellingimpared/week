@@ -78,7 +78,8 @@
 <script>
 // Display settings
 var CFG = { dayStartHour: 7, dayEndHour: 21, theme: 'light', refreshMinutes: 10,
-            lat: 39.95, lon: -75.16 };   // weather location: Philadelphia
+            lat: 39.95, lon: -75.16,     // weather location: Philadelphia
+            allDayOnlyColors: ['#9FE1E7'] };  // calendars (by color) that show only all-day events: school
 
 // Connection settings come from the address: index.html#id=DEPLOYMENT_ID&key=SECRET
 // They are remembered on the device, so this file holds nothing private.
@@ -199,6 +200,7 @@ function render() {
   for (i = 0; i < d.events.length; i++) {
     var ev0 = d.events[i];
     if (ev0.allDay) { allday.push(ev0); continue; }
+    if (allDayOnly(ev0.color)) continue; // skip timed events from all-day-only calendars
     var sd = new Date(ev0.start), ed = new Date(Math.max(ev0.start, ev0.end - 60000));
     var crosses = key(sd) !== key(ed);
     if (ev0.end - ev0.start >= 12 * 3600000) {
@@ -371,6 +373,11 @@ function wxInfo(code, isDay) {
   var w = WX[code] || ['', ''];
   if (code === 0 && isDay === 0) return ['🌙', 'Clear'];
   return w;
+}
+function allDayOnly(color) {
+  var c = String(color || '').toUpperCase();
+  for (var i = 0; i < CFG.allDayOnlyColors.length; i++) if (CFG.allDayOnlyColors[i].toUpperCase() === c) return true;
+  return false;
 }
 function deg(v) { return Math.round(v) + '°'; }
 function nowWx() {
