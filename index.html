@@ -52,6 +52,8 @@
   .cols { position:absolute; left:56px; right:0; top:0; bottom:0; }
   .col { position:absolute; top:-10px; bottom:-12px; border-left:1px solid var(--line); }
   .col.we { background:var(--we); }
+  .light .col.tdy, .light .cell.tdy { background:rgba(255,59,48,0.05); }
+  .dark .col.tdy, .dark .cell.tdy { background:rgba(255,69,58,0.09); }
   .evs { position:absolute; top:10px; bottom:12px; left:0; right:0; }
   .ev { position:absolute; box-sizing:border-box; border-left:3px solid; border-radius:5px;
         padding:2px 5px; overflow:hidden; min-height:17px; box-shadow:0 0 0 1px var(--bg); font-size:11px; line-height:14px; }
@@ -140,13 +142,12 @@ function minsOf(t, dayStart, dayEnd) {
   var d = new Date(t);
   return d.getHours() * 60 + d.getMinutes();
 }
-function colors(hex) {
-  var dark = CFG.theme === 'dark', c = hexRgb(hex);
-  return {
-    bg: rgb(mix(c, dark ? [0, 0, 0] : [255, 255, 255], dark ? 0.62 : 0.8)),
-    bar: rgb(c),
-    fg: rgb(mix(c, dark ? [255, 255, 255] : [0, 0, 0], dark ? 0.45 : 0.4))
-  };
+// past = true fades the event toward the page background (solid, not see-through).
+function colors(hex, past) {
+  var dark = CFG.theme === 'dark', c = hexRgb(hex), page = dark ? [0, 0, 0] : [255, 255, 255];
+  var bg = mix(c, page, dark ? 0.62 : 0.8), bar = c, fg = mix(c, dark ? [255, 255, 255] : [0, 0, 0], dark ? 0.45 : 0.4);
+  if (past) { var f = dark ? 0.55 : 0.6; bg = mix(bg, page, f); bar = mix(bar, page, f); fg = mix(fg, page, f); }
+  return { bg: rgb(bg), bar: rgb(bar), fg: rgb(fg) };
 }
 
 // iOS-style overlap: later events stack on top with a small indent and keep the rest of the width.
@@ -229,10 +230,10 @@ function render() {
   var ad = '<div class="gut lbl">all-day</div><div class="adcols" style="height:' + adh + 'px">';
   for (i = 0; i < 7; i++) {
     var we = days[i].getDay() === 0 || days[i].getDay() === 6;
-    ad += '<div class="cell' + (we ? ' we' : '') + '" style="left:' + (i * 100 / 7) + '%;width:' + (100 / 7) + '%"></div>';
+    ad += '<div class="cell' + (we ? ' we' : '') + (key(days[i]) === todayKey ? ' tdy' : '') + '" style="left:' + (i * 100 / 7) + '%;width:' + (100 / 7) + '%"></div>';
   }
   for (i = 0; i < bars.length; i++) {
-    var br = bars[i], k = colors(br.ev.color);
+    var br = bars[i], k = colors(br.ev.color, br.ev.endDay <= todayKey);
     ad += '<div class="ad" style="left:calc(' + (br.s * 100 / 7) + '% + 3px);width:calc(' + ((br.e - br.s) * 100 / 7) +
           '% - 5px);top:' + (br.lane * 22 + 4) + 'px;background:' + k.bg + ';color:' + k.fg + '">' + esc(br.ev.title) + '</div>';
   }
@@ -284,11 +285,12 @@ function render() {
   g += '<div class="cols">';
   for (i = 0; i < 7; i++) {
     var weekend = days[i].getDay() === 0 || days[i].getDay() === 6;
-    g += '<div class="col' + (weekend ? ' we' : '') + '" style="left:' + (i * 100 / 7) + '%;width:' + (100 / 7) + '%">';
+    g += '<div class="col' + (weekend ? ' we' : '') + (i === todayIdx ? ' tdy' : '') + '" style="left:' + (i * 100 / 7) + '%;width:' + (100 / 7) + '%">';
     g += '<div class="evs">';
     layout(segs[i]);
     for (j = 0; j < segs[i].length; j++) {
-      var x = segs[i][j], c = colors(x.ev.color), len = x.em - x.sm;
+      var x = segs[i][j], len = x.em - x.sm;
+      var c = colors(x.ev.color, key(days[i]) < todayKey || (i === todayIdx && x.em <= nowMin));
       var t = fmtTime(new Date(x.ev.start));
       // If later events cover the top of this one, move its label to the open space below them.
       var ls = x.sm, moved = true;
