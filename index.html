@@ -245,7 +245,7 @@ function render() {
   $('allday').innerHTML = ad + '</div>';
 
   // timed segments, split per day
-  var startH = 5, endH = 22;
+  var startH = 5, endH = 22, lateEnd = 0;
   var segs = [[], [], [], [], [], [], []];
   for (i = 0; i < timed.length; i++) {
     var ev = timed[i];
@@ -256,18 +256,22 @@ function render() {
         var sm = minsOf(ev.start, ds, de), em = minsOf(ev.end, ds, de);
         if (em <= sm) em = sm + 15;
         segs[j].push({ ev: ev, sm: sm, em: em });
+        // Events that start after 9:15 PM stretch the starting view to show them.
+        if (ev.start >= ds && sm > 21.25 * 60) lateEnd = Math.max(lateEnd, em);
         startH = Math.min(startH, Math.floor(sm / 60));
         endH = Math.max(endH, Math.ceil(em / 60));
       }
     }
   }
-  endH = Math.min(24, endH);
+  var BASE_START = 5.75, BASE_END = 21.25;
+  if (lateEnd) BASE_END = Math.max(BASE_END, Math.min(1440, Math.ceil((lateEnd + 15) / 15) * 15) / 60);
+  endH = Math.min(24, Math.max(endH, Math.ceil(BASE_END)));
   var total = (endH - startH) * 60;
   function pct(m) { return (m - startH * 60) / total * 100; }
-  // Each hour is sized so 7 AM to 9 PM fills the screen; anything beyond scrolls.
-  var BASE_START = 5.75, BASE_END = 21.25;
+  // Each hour is sized so the starting view (5:45 AM to 9:15 PM, or later) fills the screen; anything beyond scrolls.
   var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / ((BASE_END - BASE_START) * 60));
   $('inner').style.height = Math.round(total * pxPerMin) + 'px';
+  state.pxPerMin = pxPerMin; state.baseStart = BASE_START;
   state.startH = startH;
   var labelMins = 44 / pxPerMin, trigMins = 20 / pxPerMin;
   for (i = 0; i < 7; i++) for (j = 0; j < segs[i].length; j++) {
@@ -328,8 +332,8 @@ function render() {
 }
 
 function basePos() {
-  var pxPerMin = Math.max(0.1, (($('grid').clientHeight || 600) - 22) / (15.5 * 60));
-  return Math.max(0, (5.75 - (state.startH == null ? 5 : state.startH)) * 60 * pxPerMin);
+  var pxPerMin = state.pxPerMin || 0.6, bs = state.baseStart || 5.75;
+  return Math.max(0, (bs - (state.startH == null ? 5 : state.startH)) * 60 * pxPerMin);
 }
 function scrollToBase() { $('grid').scrollTop = basePos(); }
 function updateFades() {
