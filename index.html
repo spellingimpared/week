@@ -482,11 +482,36 @@ document.addEventListener('touchend', function (e) {
 }, false);
 // Block page bounce everywhere except inside the scrolling hours.
 document.addEventListener('touchmove', function (e) { if (!inGrid(e.target)) e.preventDefault(); }, { passive: false });
-$('grid').addEventListener('scroll', function () { state.lastTouch = Date.now(); updateFades(); }, false);
-// Return to the 6 AM view after 1 minute without a touch.
-setInterval(function () {
-  if (Date.now() - state.lastTouch > 60000 && Math.abs($('grid').scrollTop - basePos()) > 2) { scrollToBase(); updateFades(); }
-}, 10000);
+// Spring back to the 6 AM to 9 PM view as soon as the finger lifts and scrolling stops.
+var touching = false, gliding = false, settleTimer = null, glideFrame = null;
+function glideToBase() {
+  var g = $('grid'), from = g.scrollTop, to = basePos(), t0 = Date.now(), dur = 320;
+  if (Math.abs(from - to) < 2) return;
+  gliding = true;
+  function step() {
+    if (touching) { gliding = false; return; }
+    var p = Math.min(1, (Date.now() - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    g.scrollTop = from + (to - from) * e;
+    updateFades();
+    if (p < 1) { glideFrame = requestAnimationFrame(step); } else { gliding = false; }
+  }
+  glideFrame = requestAnimationFrame(step);
+}
+function scheduleSettle() {
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(function () { if (!touching && !gliding) glideToBase(); }, 150);
+}
+$('grid').addEventListener('touchstart', function () {
+  touching = true; gliding = false; clearTimeout(settleTimer);
+  if (glideFrame) cancelAnimationFrame(glideFrame);
+}, false);
+$('grid').addEventListener('touchend', function () { touching = false; scheduleSettle(); }, false);
+$('grid').addEventListener('touchcancel', function () { touching = false; scheduleSettle(); }, false);
+$('grid').addEventListener('scroll', function () {
+  state.lastTouch = Date.now(); updateFades();
+  if (!touching && !gliding) scheduleSettle();
+}, false);
+
 window.addEventListener('resize', render);
 
 setInterval(function () {
