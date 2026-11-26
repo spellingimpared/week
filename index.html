@@ -40,7 +40,6 @@
         box-sizing:border-box; }
   #grid { flex:1; position:relative; min-height:0; }
   #inner { position:absolute; top:10px; bottom:12px; left:0; right:0; }
-  .nightband { position:absolute; left:56px; right:0; background:repeating-linear-gradient(135deg, var(--line) 0, var(--line) 1px, transparent 1px, transparent 6px); opacity:0.6; }
   .hl { position:absolute; left:56px; right:0; border-top:1px solid var(--line); }
   .hlab { position:absolute; left:0; width:50px; text-align:right; font-size:11px; color:var(--sub);
           margin-top:-7px; }
@@ -266,22 +265,12 @@ function render() {
     }
   }
   endH = Math.min(24, endH);
-  // Midnight to 6 AM is drawn at 1/6 the height of other hours.
-  var C1 = 0, C2 = 360, CW = 1 / 6;
-  function posOf(m) {
-    return Math.min(m, C1) + Math.max(0, Math.min(m, C2) - C1) * CW + Math.max(0, m - C2);
-  }
-  function minOf(u) {
-    if (u <= C1) return u;
-    if (u <= C1 + (C2 - C1) * CW) return C1 + (u - C1) / CW;
-    return C2 + (u - C1 - (C2 - C1) * CW);
-  }
-  var p0 = posOf(startH * 60), ptot = posOf(endH * 60) - p0;
-  function pct(m) { return (posOf(m) - p0) / ptot * 100; }
-  var pxPerUnit = Math.max(0.1, ($('inner').clientHeight || 600) / ptot);
-  function px(a, b) { return (posOf(b) - posOf(a)) * pxPerUnit; }
+  var total = (endH - startH) * 60;
+  function pct(m) { return (m - startH * 60) / total * 100; }
+  var pxPerMin = Math.max(0.1, ($('inner').clientHeight || 600) / total);
+  var labelMins = 44 / pxPerMin, trigMins = 20 / pxPerMin;
   for (i = 0; i < 7; i++) for (j = 0; j < segs[i].length; j++) {
-    segs[i][j].emv = segs[i][j].em <= 360 ? segs[i][j].em : Math.max(segs[i][j].em, minOf(posOf(segs[i][j].sm) + 18 / pxPerUnit));
+    segs[i][j].emv = Math.max(segs[i][j].em, segs[i][j].sm + 18 / pxPerMin);
   }
 
   var todayIdx = -1;
@@ -292,10 +281,8 @@ function render() {
   var g = '';
   for (var h = startH; h <= endH; h++) {
     var top = pct(h * 60);
-    if (h === 0 && endH >= 6) g += '<div class="nightband" style="top:' + top + '%;height:' + (pct(360) - top) + '%"></div>';
-    if (h > 0 && h < 6) continue; // collapsed hours: no lines or labels
     g += '<div class="hl" style="top:' + top + '%"></div>';
-    if (!(showNow && Math.abs(px(h * 60, nowMin)) < 9)) g += '<div class="hlab" style="top:' + top + '%">' + hourLabel(h) + '</div>';
+    if (!(showNow && Math.abs(nowMin - h * 60) < 13)) g += '<div class="hlab" style="top:' + top + '%">' + hourLabel(h) + '</div>';
   }
   if (showNow) g += '<div class="nowlab" style="top:' + pct(nowMin) + '%">' + fmtTime(now).replace(' AM', '').replace(' PM', '') + '</div>';
 
@@ -314,12 +301,12 @@ function render() {
         moved = false;
         for (var q = 0; q < segs[i].length; q++) {
           var o = segs[i][q];
-          if (o.z > x.z && px(ls, o.sm) < 20 && o.emv > ls && o.sm < x.em) { ls = o.emv; moved = true; }
+          if (o.z > x.z && o.sm < ls + trigMins && o.emv > ls && o.sm < x.em) { ls = o.emv; moved = true; }
         }
       }
-      var shift = (ls > x.sm && px(ls, x.em) >= 26) ? px(x.sm, ls) : 0;
+      var shift = (ls > x.sm && x.em - ls >= 0.6 * labelMins) ? (ls - x.sm) * pxPerMin : 0;
       var pad = shift ? '<div style="height:' + Math.round(shift) + 'px"></div>' : '';
-      g += '<div class="ev" style="top:' + pct(x.sm) + '%;height:' + (pct(x.em) - pct(x.sm)) + '%' + (x.em <= 360 ? ';min-height:0;padding-top:0;padding-bottom:0' : '') + ';left:calc(' + x.left +
+      g += '<div class="ev" style="top:' + pct(x.sm) + '%;height:' + (len / total * 100) + '%;left:calc(' + x.left +
            '% + 1px);width:calc(' + x.width + '% - 3px);z-index:' + x.z + ';background:' + c.bg + ';border-left-color:' + c.bar +
            ';color:' + c.fg + '">' + pad +
            (len < 45
