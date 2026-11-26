@@ -92,7 +92,7 @@ function readSettings() {
 var SET = readSettings();
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-var state = { offset: 0, data: null, lastKey: '', lastTouch: 0 };
+var state = { offset: 0, data: null, all: null, lastKey: '', lastTouch: 0 };
 
 function $(id) { return document.getElementById(id); }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -350,6 +350,28 @@ function jsonp(url, ok, fail) {
 
 function showErr(msg) { $('err').textContent = msg; $('err').style.display = 'block'; }
 
+function weekData(offset) {
+  var all = state.all, wk = null;
+  for (var i = 0; i < all.weeks.length; i++) if (all.weeks[i].offset === offset) wk = all.weeks[i];
+  if (!wk) return null;
+  var first = wk.days[0], last = wk.days[6];
+  var s = parseDay(first).getTime(), l = parseDay(last);
+  var e = new Date(l.getFullYear(), l.getMonth(), l.getDate() + 1).getTime();
+  var evs = [];
+  for (i = 0; i < all.events.length; i++) {
+    var ev = all.events[i];
+    if (ev.allDay ? (ev.startDay <= last && ev.endDay > first) : (ev.end > s && ev.start < e)) evs.push(ev);
+  }
+  return { days: wk.days, today: all.today, events: evs };
+}
+
+function showWeek() {
+  var d = weekData(state.offset);
+  if (!d) { state.offset = 0; d = weekData(0); }
+  state.data = d;
+  render();
+}
+
 function load() {
   state.lastKey = key(new Date());
   if (!SET.id || !SET.key) {
@@ -359,16 +381,21 @@ function load() {
     return;
   }
   var url = 'https://script.google.com/macros/s/' + encodeURIComponent(SET.id) + '/exec?key=' +
-            encodeURIComponent(SET.key) + '&offset=' + state.offset + '&t=' + Date.now();
+            encodeURIComponent(SET.key) + '&t=' + Date.now();
   getData(url, function (d) {
     if (d && d.error) { showErr('Calendar error: ' + d.error); return; }
-    state.data = d; $('err').style.display = 'none'; render();
+    if (!d || !d.weeks) { showErr('Update Code.gs in Apps Script and deploy a new version'); return; }
+    state.all = d; $('err').style.display = 'none'; showWeek();
   }, function (msg) { showErr('Could not refresh (' + msg + ')'); });
 }
+
 function go(delta) {
   state.lastTouch = Date.now();
-  state.offset = delta === 0 ? 0 : state.offset + delta;
-  load();
+  if (!state.all) return;
+  var next = delta === 0 ? 0 : state.offset + delta;
+  if (!weekData(next)) return; // stop at the edge of the allowed range
+  state.offset = next;
+  showWeek();
 }
 
 $('prev').onclick = function () { go(-1); };
@@ -387,7 +414,7 @@ document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { p
 window.addEventListener('resize', render);
 
 setInterval(function () {
-  if (state.offset !== 0 && Date.now() - state.lastTouch > 5 * 60000) { state.offset = 0; load(); return; }
+  if (state.offset !== 0 && Date.now() - state.lastTouch > 5 * 60000) { state.offset = 0; showWeek(); return; }
   if (key(new Date()) !== state.lastKey) { load(); return; }
   render();
 }, 60000);
